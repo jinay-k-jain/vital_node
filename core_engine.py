@@ -53,8 +53,9 @@ def process_patient(patient_id, patient):
     # A. Execute Single-Shot NLP
     nlp_data = execute_clinical_nlp(patient)
     
+
     # B. Data Completeness
-    vitals = [patient['current_hr'], patient['current_rr'], patient['current_spo2'], patient['current_sys_bp'], patient['temp']]
+    vitals = [patient['current_hr'], patient['current_rr'], patient['current_spo2'], patient['current_sys_bp'], patient['current_dia_bp'], patient['temp']]
     missing_count = sum(1 for v in vitals if v is None)
     safe_vitals = [v if v is not None else np.nan for v in vitals]
 
@@ -79,7 +80,7 @@ def process_patient(patient_id, patient):
         'age': patient['age'],
         'sex': patient['sex'],
         'current_hr': safe_vitals[0], 'current_rr': safe_vitals[1], 'current_spo2': safe_vitals[2],
-        'current_sys_bp': safe_vitals[3], 'temp': safe_vitals[4],
+        'current_sys_bp': safe_vitals[3], 'current_dia_bp': safe_vitals[4], 'temp': safe_vitals[5],
         'time_in_queue_mins': patient['time_in_queue_mins'],
         'delta_hr': patient['delta_hr'], 'delta_spo2': patient['delta_spo2'],
         'current_symptom_risk': nlp_data['symptom_risk'],
