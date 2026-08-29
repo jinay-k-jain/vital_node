@@ -1,0 +1,16 @@
+# Virtual Environment
+venv/
+__pycache__/
+ignore/
+
+# Data Files (Too large for GitHub, team should download separately if needed)
+*.dta
+*.csv
+*.xlsx
+
+# Secrets
+.env
+*API_KEY*
+
+# OS Files
+.DS_Store

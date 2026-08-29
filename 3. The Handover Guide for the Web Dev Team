@@ -1,0 +1,68 @@
+
+
+To: Backend & Database Team
+From: ML Architecture
+Subject: VitalNode API Contract & DB Schema Requirements
+
+Overview:
+I have finalized the core intelligence engine (core_engine.py) and the trained artifact (vitalnode_production.json). The ML pipeline is completely self-contained. It handles the Gemini LLM routing, unstructured text parsing, XGBoost execution, and WHO clinical rule fusion.
+
+Your objective is to build the FastAPI endpoints and PostgreSQL schemas around this engine.
+A. Database Schema Expectations
+
+To support this continuous triage architecture and maintain auditability, please implement the following relational structure in PostgreSQL:
+
+    Table: Patients (Strictly for DPDP compliance. Encrypt PII here).
+
+        patient_uuid, name_hash, age, history_text
+
+    Table: Encounters (The live state of the queue).
+
+        encounter_id, patient_uuid, arrival_time, current_esi, ai_confidence, safety_flags, ai_reasoning.
+
+    Table: Vital_Readings (Time-series data).
+
+        reading_id, encounter_id, timestamp, hr, spo2, rr, sys_bp, temp.
+
+    Table: Audit_Log (Immutable ledger).
+
+        log_id, encounter_id, timestamp, action_type (e.g., 'INITIAL_TRIAGE', 'REASSESSMENT', 'NURSE_OVERRIDE'), old_esi, new_esi, nurse_id, override_reason.
+
+B. The API Contract
+
+When a patient arrives or new vitals are taken, construct the following dictionary and pass it to my process_patient(patient_id, patient_dict) function.
+
+Expected Input Dictionary:
+JSON
+
+{
+    "age": 45.0,
+    "current_hr": 110.0, 
+    "current_rr": 18.0, 
+    "current_spo2": 95.0, 
+    "current_sys_bp": 130.0, 
+    "temp": 37.1,
+    "time_in_queue_mins": 0, 
+    "delta_hr": 0.0, 
+    "delta_spo2": 0.0,
+    "complaint": "I feel dizzy and my chest is tight.",
+    "history_available": 1, 
+    "history_text": "Hypertension, Type 2 Diabetes.",
+    "immediate_danger": false
+}
+
+(Note: If a vital is missing, pass null/None. Do not pass 0).
+
+Engine Output:
+The function will return a flat dictionary (including timestamps, fused ESI scores, JSON-stringified safety flags, and clinical reasoning) that is formatted perfectly for a direct SQL INSERT or UPDATE statement into the Encounters table.
+C. The Real-Time Requirement (WebSockets)
+
+This is not a static app. You must implement a WebSocket connection between FastAPI and the React frontend.
+
+    Write a background loop that fires every 1-2 minutes.
+
+    For every patient in the waiting room, recalculate their time_in_queue_mins and delta_hr/delta_spo2.
+
+    Pass that updated state through my process_patient() function.
+
+    Push the new array of ESI scores over the WebSocket so the React frontend queue dynamically re-sorts without the nurse having to refresh the page.
