@@ -77,6 +77,7 @@ def process_patient(patient_id, patient):
     # D. XGBoost Inference
     features = pd.DataFrame([{
         'age': patient['age'],
+        'sex': patient['sex'],
         'current_hr': safe_vitals[0], 'current_rr': safe_vitals[1], 'current_spo2': safe_vitals[2],
         'current_sys_bp': safe_vitals[3], 'temp': safe_vitals[4],
         'time_in_queue_mins': patient['time_in_queue_mins'],
