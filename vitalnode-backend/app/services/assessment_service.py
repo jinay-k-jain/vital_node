@@ -324,29 +324,69 @@ async def record_nurse_decision(
     nurse_role: str,
 ) -> NurseDecision:
     """
-    Store the nurse's final decision (ACCEPT | OVERRIDE | REASSESS_REQUESTED).
+    Store or update the nurse's final decision
+    (ACCEPT | OVERRIDE | REASSESS_REQUESTED).
+
     AI recommendation is NEVER deleted or modified.
+
+    An assessment has at most one NurseDecision, so an existing
+    decision is updated rather than inserting a duplicate row.
     """
     now = datetime.now(timezone.utc)
 
-    nurse_decision = NurseDecision(
-        assessment_id=assessment.id,
-        nurse_id=nurse_user_id,
-        action=decision.action,
-        final_acuity=Acuity(decision.final_acuity),
-        override_reason=decision.override_reason,
-        override_note=decision.override_note,
-        decided_at=now,
+    # Check whether this assessment already has a nurse decision.
+    nurse_decision = await db.scalar(
+        select(NurseDecision).where(
+            NurseDecision.assessment_id == assessment.id
+        )
     )
-    db.add(nurse_decision)
+
+    if nurse_decision is None:
+        # First nurse decision for this assessment.
+        nurse_decision = NurseDecision(
+            assessment_id=assessment.id,
+            nurse_id=nurse_user_id,
+            action=decision.action,
+            final_acuity=Acuity(decision.final_acuity),
+            override_reason=decision.override_reason,
+            override_note=decision.override_note,
+            decided_at=now,
+        )
+        db.add(nurse_decision)
+    else:
+        # Existing decision: update it instead of creating
+        # another row with the same assessment_id.
+        nurse_decision.nurse_id = nurse_user_id
+        nurse_decision.action = decision.action
+        nurse_decision.final_acuity = Acuity(decision.final_acuity)
+        nurse_decision.override_reason = decision.override_reason
+        nurse_decision.override_note = decision.override_note
+        nurse_decision.decided_at = now
+
     await db.flush()
 
-    # Update encounter acuity to nurse-confirmed value and start/restart its timer.
-    safety = assessment.ai_recommendation.safety_status if assessment.ai_recommendation else encounter.safety_status
-    await update_encounter_priority(db, encounter, Acuity(decision.final_acuity), safety)
-    await set_reassessment_due(db, encounter, decision.final_acuity)
+    # Update encounter acuity to nurse-confirmed value and
+    # start/restart its reassessment timer.
+    safety = (
+        assessment.ai_recommendation.safety_status
+        if assessment.ai_recommendation
+        else encounter.safety_status
+    )
 
-    # Audit
+    await update_encounter_priority(
+        db,
+        encounter,
+        Acuity(decision.final_acuity),
+        safety,
+    )
+
+    await set_reassessment_due(
+        db,
+        encounter,
+        decision.final_acuity,
+    )
+
+    # Always record an audit event, including repeated overrides.
     await record_audit_event(
         db=db,
         event_type=decision.action,
@@ -355,15 +395,31 @@ async def record_nurse_decision(
         user_name=nurse_name,
         user_role=nurse_role,
         patient_id=encounter.patient_id,
-        patient_display_id=encounter.patient.display_id if encounter.patient else None,
+        patient_display_id=(
+            encounter.patient.display_id
+            if encounter.patient
+            else None
+        ),
         encounter_id=encounter.id,
         assessment_id=assessment.id,
-        ai_recommendation=ev(assessment.ai_recommendation.acuity) if assessment.ai_recommendation else None,
-        ai_confidence=assessment.ai_recommendation.confidence if assessment.ai_recommendation else None,
+        ai_recommendation=(
+            ev(assessment.ai_recommendation.acuity)
+            if assessment.ai_recommendation
+            else None
+        ),
+        ai_confidence=(
+            assessment.ai_recommendation.confidence
+            if assessment.ai_recommendation
+            else None
+        ),
         nurse_action=decision.action,
         final_acuity=decision.final_acuity,
         override_reason=decision.override_reason,
-        model_version=assessment.ai_recommendation.model_version if assessment.ai_recommendation else None,
+        model_version=(
+            assessment.ai_recommendation.model_version
+            if assessment.ai_recommendation
+            else None
+        ),
         notes=decision.override_note,
     )
 
