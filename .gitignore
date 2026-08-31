@@ -1,16 +1,54 @@
-# Virtual Environment
+# =========================
+# Python
+# =========================
 venv/
+.venv/
 __pycache__/
-ignore/
+*.py[cod]
+.pytest_cache/
 
-# Data Files (Too large for GitHub, team should download separately if needed)
-*.dta
-*.csv
-*.xlsx
-
-# Secrets
+# =========================
+# Environment / Secrets
+# =========================
 .env
+.env.*
+!.env.example
 *API_KEY*
 
-# OS Files
+# =========================
+# Node
+# =========================
+node_modules/
+dist/
+.vite/
+
+# =========================
+# OS
+# =========================
 .DS_Store
+._*
+Thumbs.db
+
+# =========================
+# IDE
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# VS Code local history
+# =========================
+.history/
+
+# =========================
+# Python generated files
+# =========================
+*.log
+
+# =========================
+# Data files
+# =========================
+*.csv
+*.xlsx
+*.xls
+*.dta
