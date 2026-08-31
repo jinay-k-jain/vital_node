@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+:root {
+  font-size: 26px;
+  --acuity-critical: #dc2626;
+  --acuity-critical-bg: #fef2f2;
+  --acuity-critical-border: #fca5a5;
+  --acuity-high: #ea580c;
+  --acuity-high-bg: #fff7ed;
+  --acuity-high-border: #fdba74;
+  --acuity-moderate: #d97706;
+  --acuity-moderate-bg: #fffbeb;
+  --acuity-moderate-border: #fcd34d;
+  --acuity-low: #16a34a;
+  --acuity-low-bg: #f0fdf4;
+  --acuity-low-border: #86efac;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background-color: #f8fafc;
+  color: #0f172a;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1;
+    border-radius: 9999px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: #94a3b8;
+  }
+}
