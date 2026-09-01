@@ -1,9 +1,7 @@
-# Note: If this file is inside the ML folder, use 'from core_engine import process_patient'
-# If it is outside, use 'from ML.core_engine import process_patient'
-from core_engine import process_patient
-import json
+import time
+from core_engine_gemini import process_patient
 
-print("🏥 VITALNODE ML CORE TEST SUITE (14-FEATURE GROQ UPDATE) 🏥\n")
+print("🏥 VITALNODE ML CORE TEST SUITE (14-FEATURE) 🏥\n")
 
 # Case 1: Unrelated History
 patient_1 = {
@@ -14,7 +12,7 @@ patient_1 = {
     "immediate_danger": False
 }
 
-# Case 2: Crashing Reassessment (Time-Series Deterioration)
+# Case 2: Crashing Reassessment
 patient_2 = {
     "age": 60.0, "sex": 1, "current_hr": 140.0, "current_rr": 24.0, "current_spo2": 89.0, "current_sys_bp": 90.0, "current_dia_bp": 60.0, "temp": 37.5,
     "time_in_queue_mins": 45, "delta_hr": 40.0, "delta_spo2": -8.0,
@@ -23,7 +21,7 @@ patient_2 = {
     "immediate_danger": False
 }
 
-# Case 3: Compounding Risk (Relational History)
+# Case 3: Compounding Risk
 patient_3 = {
     "age": 75.0, "sex": 1, "current_hr": 88.0, "current_rr": 18.0, "current_spo2": 95.0, "current_sys_bp": 130.0, "current_dia_bp": 85.0, "temp": 36.8,
     "time_in_queue_mins": 0, "delta_hr": 0.0, "delta_spo2": 0.0,
@@ -32,7 +30,7 @@ patient_3 = {
     "immediate_danger": False
 }
 
-# Case 4: Pediatric Tachycardia Override
+# Case 4: Pediatric Tachycardia
 patient_4 = {
     "age": 3.0, "sex": 0, "current_hr": 175.0, "current_rr": 35.0, "current_spo2": 97.0, "current_sys_bp": 90.0, "current_dia_bp": 55.0, "temp": 38.5,
     "time_in_queue_mins": 0, "delta_hr": 0.0, "delta_spo2": 0.0,
@@ -50,7 +48,6 @@ cases = [
 
 for name, data in cases:
     print(f"--- {name} ---")
-    # Using a mock UUID for the database payload test
     res = process_patient(patient_id="TEST-0000-UUID", patient=data)
     
     print(f"Extracted Symptom:      {res['extracted_symptom']} (Risk: {res['symptom_risk_score']})")
@@ -60,6 +57,6 @@ for name, data in cases:
     print(f"Safety Gate Action:     {res['action_path']}")
     print(f"Safety Flags:           {res['safety_flags']}")
     print(f"AI Reasoning:           {res['ai_reasoning']}\n")
-
-    print("Waiting 2 seconds for Groq API rate limits...")
-    time.sleep(2)
+    
+    print("Waiting 5 seconds for Gemini API rate limits...")
+    time.sleep(5)

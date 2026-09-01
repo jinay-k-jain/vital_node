@@ -1,28 +1,25 @@
+from google import genai
 import xgboost as xgb
 import pandas as pd
 import numpy as np
 import json
+import re
 import os
 from datetime import datetime, timezone
 from dotenv import load_dotenv
-from groq import Groq
 
-# Load environment variables from the .env file
 load_dotenv()
 
-# 1. Configuration & Model Loading (Using Groq)
-GROQ_API_KEY = os.getenv("GROQ_API_KEY") 
-if not GROQ_API_KEY:
-    raise ValueError("CRITICAL: GROQ_API_KEY not found in .env file.")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") 
+if not GEMINI_API_KEY:
+    raise ValueError("CRITICAL: GEMINI_API_KEY not found in .env file.")
 
-# Initialize the Groq client
-client = Groq(api_key=GROQ_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 model = xgb.XGBClassifier()
-# Using the 14-feature final model
 model.load_model('vitalnode_final_xgboost.json')
 
-# 2. The Single-Shot Unified NLP Extraction (Powered by Groq)
+# 2. The Single-Shot Unified NLP Extraction
 def execute_clinical_nlp(patient):
     """Executes a single API call to prevent rate limiting and reduce latency."""
     history_context = patient['history_text'] if patient['history_available'] == 1 else "No History Available"
@@ -41,28 +38,13 @@ def execute_clinical_nlp(patient):
     
     Return ONLY a valid JSON object with the exact keys: primary_symptom, symptom_risk, historical_risk, clinical_reasoning.
     """
-    
     try:
-        # Using Llama 3.3 70B on Groq for maximum reasoning and strict JSON compliance
-        chat_completion = client.chat.completions.create(
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You output strict JSON."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            model="qwen/qwen3.6-27b",
-            temperature=0.1,
-            response_format={"type": "json_object"}
+        response = client.models.generate_content(
+            model='gemini-3.6-flash',
+            contents=prompt
         )
-        
-        # Groq's JSON mode guarantees clean JSON output, no regex needed
-        return json.loads(chat_completion.choices[0].message.content)
-        
+        clean = re.sub(r'```(?:json)?\n?(.*?)\n?```', r'\1', response.text, flags=re.DOTALL).strip()
+        return json.loads(clean)
     except Exception as e:
         print(f"NLP Fallback Triggered: {e}")
         return {
@@ -77,6 +59,7 @@ def process_patient(patient_id, patient):
     # A. Execute Single-Shot NLP
     nlp_data = execute_clinical_nlp(patient)
     
+
     # B. Data Completeness
     vitals = [patient['current_hr'], patient['current_rr'], patient['current_spo2'], patient['current_sys_bp'], patient['current_dia_bp'], patient['temp']]
     missing_count = sum(1 for v in vitals if v is None)
@@ -98,7 +81,7 @@ def process_patient(patient_id, patient):
             clinical_override = 1
             flags.append("Critical Hypoxia (SpO2 < 92%)")
 
-    # D. XGBoost Inference (Now receiving all 14 features)
+    # D. XGBoost Inference
     features = pd.DataFrame([{
         'age': patient['age'],
         'sex': patient['sex'],
