@@ -1,4 +1,4 @@
-from core_engine import process_patient
+from ML.core_engine import process_patient
 import json
 
 print("🏥 VITALNODE ML CORE TEST SUITE 🏥\n")
