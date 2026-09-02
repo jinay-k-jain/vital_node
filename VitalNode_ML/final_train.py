@@ -73,8 +73,40 @@ df.loc[(df['historical_risk_score'] == 3) & (df['current_symptom_risk'] <= 1), '
 
 df['acuity'] = df['acuity'].astype(int)
 
-# 6. TRAIN THE MODEL
-# The final 14 features matching the core_engine.py array
+# # 6. TRAIN THE MODEL
+# # The final 14 features matching the core_engine.py array
+# features = [
+#     'age', 'sex', 'current_hr', 'current_rr', 'current_spo2', 'current_sys_bp', 'current_dia_bp', 'temp', 
+#     'time_in_queue_mins', 'delta_hr', 'delta_spo2', 
+#     'current_symptom_risk', 'historical_risk_score', 'missing_vitals_count'
+# ]
+
+# X = df[features]
+# y = df['acuity']
+
+# X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# # Initialize XGBoost - missing=np.nan is critical for handling incomplete triage vitals
+# final_model = xgb.XGBClassifier(
+#     objective='multi:softprob', 
+#     num_class=5, 
+#     eval_metric='mlogloss', 
+#     use_label_encoder=False, 
+#     missing=np.nan
+# )
+
+# final_model.fit(X_train, y_train)
+
+# # Save the artifact for the web devs
+# final_model.save_model('vitalnode_final_xgboost.json')
+# print("✅ Saved 'vitalnode_final_xgboost.json'")
+
+# # Print diagnostics
+# y_pred = final_model.predict(X_test)
+# print("\nClassification Report (14-Feature Architecture):")
+# print(classification_report(y_test, y_pred, target_names=['ESI 1', 'ESI 2', 'ESI 3', 'ESI 4', 'ESI 5']))
+
+# 6. TRAIN THE DEEP-TREE MODEL
 features = [
     'age', 'sex', 'current_hr', 'current_rr', 'current_spo2', 'current_sys_bp', 'current_dia_bp', 'temp', 
     'time_in_queue_mins', 'delta_hr', 'delta_spo2', 
@@ -86,22 +118,20 @@ y = df['acuity']
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Initialize XGBoost - missing=np.nan is critical for handling incomplete triage vitals
+# Initialize XGBoost with Increased Tree Height
 final_model = xgb.XGBClassifier(
     objective='multi:softprob', 
     num_class=5, 
     eval_metric='mlogloss', 
+    max_depth=8,              # INCREASED TREE HEIGHT: Gives room to build the "Age + Fever" branches
+    min_child_weight=1,       # Allows the tree to isolate small minority groups (like severe pediatric cases)
+    learning_rate=0.1,        # Slightly slower learning so it doesn't overfit the deep branches
     use_label_encoder=False, 
     missing=np.nan
 )
 
 final_model.fit(X_train, y_train)
 
-# Save the artifact for the web devs
+# Save the artifact
 final_model.save_model('vitalnode_final_xgboost.json')
-print("✅ Saved 'vitalnode_final_xgboost.json'")
-
-# Print diagnostics
-y_pred = final_model.predict(X_test)
-print("\nClassification Report (14-Feature Architecture):")
-print(classification_report(y_test, y_pred, target_names=['ESI 1', 'ESI 2', 'ESI 3', 'ESI 4', 'ESI 5']))
+print("Saved Model")

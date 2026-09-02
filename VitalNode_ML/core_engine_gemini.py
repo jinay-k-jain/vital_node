@@ -40,7 +40,7 @@ def execute_clinical_nlp(patient):
     """
     try:
         response = client.models.generate_content(
-            model='gemini-3.6-flash',
+            model='gemini-3.5-flash',
             contents=prompt
         )
         clean = re.sub(r'```(?:json)?\n?(.*?)\n?```', r'\1', response.text, flags=re.DOTALL).strip()
@@ -65,21 +65,73 @@ def process_patient(patient_id, patient):
     missing_count = sum(1 for v in vitals if v is None)
     safe_vitals = [v if v is not None else np.nan for v in vitals]
 
-    # C. WHO Clinical Safety Rules
+   # C. Comprehensive WHO & ESI Clinical Safety Rules
     clinical_override = None
     flags = []
     
+    # Extract vitals for readability (safe_vitals handles None -> np.nan)
+    hr = safe_vitals[0]
+    rr = safe_vitals[1]
+    spo2 = safe_vitals[2]
+    sys_bp = safe_vitals[3]
+    dia_bp = safe_vitals[4]
+    temp = safe_vitals[5]
+    age = patient['age']
+
+    # --- LEVEL 1: IMMEDIATE DANGER / RESUSCITATION (Forces ESI 1) ---
     if patient['immediate_danger']:
         clinical_override = 0
         flags.append("Level 1 Immediate Danger Observed")
-    elif patient['age'] < 12:
-        if safe_vitals[0] > 160: 
+    elif spo2 < 90:
+        clinical_override = 0
+        flags.append("Severe Hypoxia (SpO2 < 90%)")
+    elif rr < 8 or rr > 40:
+        clinical_override = 0
+        flags.append("Critical Respiratory Distress (RR < 8 or > 40)")
+    elif (age >= 12 and (hr < 40 or hr > 180)) or (age < 12 and hr > 200):
+        clinical_override = 0
+        flags.append("Critical Arrhythmia Risk (Extreme HR)")
+
+    # --- LEVEL 2: HIGH RISK (Forces ESI 2) ---
+    # We only evaluate Level 2 if Level 1 wasn't triggered
+    if clinical_override is None:
+        
+        # 1. Hypertensive Crisis (Using your new Diastolic BP feature)
+        if sys_bp >= 180 or dia_bp >= 120:
             clinical_override = 1
-            flags.append("Pediatric Tachycardia (HR > 160)")
-    else:
-        if safe_vitals[2] < 92: 
+            flags.append("Hypertensive Emergency (BP >= 180/120)")
+            
+        # 2. Adult Hypotension / Shock Risk
+        elif age >= 12 and sys_bp < 90:
             clinical_override = 1
-            flags.append("Critical Hypoxia (SpO2 < 92%)")
+            flags.append("Hypotension / Shock Risk (Sys BP < 90)")
+
+        # 3. Pediatric Rules
+        elif age < 12:
+            if hr > 160:
+                clinical_override = 1
+                flags.append("Pediatric Tachycardia (HR > 160)")
+            # Neonate/Infant Fever: Under 3 months with 38.0°C is an automatic ESI 2
+            elif age <= 0.25 and temp >= 38.0:
+                clinical_override = 1
+                flags.append("Neonate Fever Risk (Age <= 3mo, Temp >= 38°C)")
+            # Standard Pediatric Fever
+            elif age <= 5 and temp >= 39.0:
+                clinical_override = 1
+                flags.append("Pediatric High Fever Risk (Temp >= 39°C)")
+
+        # 4. Extreme Temperature (Any Age)
+        elif temp >= 40.0:
+            clinical_override = 1
+            flags.append("Extreme Hyperthermia (Temp >= 40°C)")
+        elif temp <= 35.0:
+            clinical_override = 1
+            flags.append("Extreme Hypothermia (Temp <= 35°C)")
+            
+        # 5. Standard Hypoxia
+        elif spo2 < 92:
+            clinical_override = 1
+            flags.append("Hypoxia Risk (SpO2 < 92%)")
 
     # D. XGBoost Inference
     features = pd.DataFrame([{

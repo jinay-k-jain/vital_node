@@ -58,5 +58,5 @@ for name, data in cases:
     print(f"Safety Flags:           {res['safety_flags']}")
     print(f"AI Reasoning:           {res['ai_reasoning']}\n")
     
-    print("Waiting 5 seconds for Gemini API rate limits...")
-    time.sleep(5)
+    print("Waiting 2 seconds for Gemini API rate limits...")
+    time.sleep(2)
