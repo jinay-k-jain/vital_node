@@ -325,13 +325,8 @@ VitalNode is intentionally bounded as an innovation-challenge prototype. Before 
 
 | Field | Details |
 | --- | --- |
-| Challenge | Accenture Innovation Challenge 2026 |
 | Project | VitalNode |
 | Frontend demo | [https://vital-node.onrender.com/](https://vital-node.onrender.com/) |
 | Backend API | [https://vitalnode-backend.onrender.com](https://vitalnode-backend.onrender.com) |
-| Team name | `<add team name>` |
-| Team members | `<add names and responsibilities>` |
-| Demo video | `<add link>` |
-| Presentation | `<add link>` |
 
 VitalNode: AI-assisted triage. Human-led care.
