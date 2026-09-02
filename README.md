@@ -1,215 +1,25 @@
 # VitalNode
 
-> **Safety-gated, AI-assisted emergency triage prototype**  
-> *Accenture Innovation Challenge 2026*
+> Safety-gated, AI-assisted emergency triage prototype
+> Accenture Innovation Challenge 2026
 
-VitalNode helps emergency-department teams prioritise **synthetic** patient cases under time pressure. It combines structured intake, vital signs, data-quality checks, independent clinical safety rules, and an interchangeable ML inference layer to produce an explainable acuity recommendation. The clinician remains the decision-maker: they can accept, override with a reason, or request reassessment, and every significant action is audit logged.
+VitalNode is a deployed full-stack prototype for emergency department triage. It helps triage teams capture structured intake data, reason over vital signs and patient context, and produce an explainable ESI-based acuity recommendation. The system is designed for human-led care: the AI can recommend, but a clinical user must accept, override with a reason, or request reassessment before the active queue is updated.
 
-> **Responsible-use notice:** VitalNode is a competition prototype using synthetic data. It is **not** clinically validated, is not a medical device, and must never be used for real patient care, diagnosis, or treatment decisions.
+Responsible-use notice: VitalNode is a competition prototype. It is not clinically validated, is not a medical device, and must not be used for real patient care, diagnosis, or treatment. The public deployment is for challenge evaluation only; do not enter real patient-identifiable information.
 
-## The challenge
+## Live submission links
 
-Emergency departments must continuously sort patients while information is incomplete, vital signs evolve, and the number of arrivals can suddenly rise. A purely first-come-first-served process can hide deterioration and makes prioritisation hard to review.
-
-VitalNode demonstrates a human-in-the-loop workflow that makes prioritisation visible, safety-conscious, and traceable:
-
-- Produces a queue ordered by patient acuity.
-- Independently evaluates data quality and clinical safety signals.
-- Shows confidence, contributing factors, and verification guidance.
-- Prevents an AI recommendation from changing the active queue until clinical staff act.
-- Supports reassessment deadlines and live queue updates.
-- Simulates a deterministic 3× arrival surge without external API usage.
-
-## Key capabilities
-
-| Capability | Implementation in this prototype |
+| Resource | Link |
 | --- | --- |
-| Structured triage intake | Captures demographics, arrival mode, pregnancy status, complaint, symptoms, history, danger signs, and vital signs. |
-| Safety-gated decisioning | Clinical rules run independently of model inference; decision fusion and a final safety gate can escalate but never silently reduce a safety status. |
-| Explainable recommendation | Returns acuity, confidence, model status/version, top factors, matched rules, data completeness, and safety reasons. |
-| Human oversight | Triage staff can accept, override (with a mandatory reason), or request reassessment. The original AI recommendation is retained. |
-| Data-quality awareness | Detects missing, stale, invalid, and conflicting entries; low completeness reduces confidence and triggers a conservative pathway. |
-| Continuous triage | A background worker checks reassessment deadlines every minute and broadcasts queue updates over WebSocket. |
-| Auditability | Login, prediction, clinician decision, reassessment, configuration, and surge events are persisted in the audit log. |
-| Surge readiness demo | Starting surge mode adds twice the normal active volume, yielding exactly 3× the baseline queue. |
-| Voice-assisted intake | Supports mock transcription and configurable speech-to-text providers; extracted symptoms remain suggestions for staff confirmation. |
+| Frontend demo | [https://vital-node.onrender.com/](https://vital-node.onrender.com/) |
+| Backend API | [https://vitalnode-backend.onrender.com](https://vitalnode-backend.onrender.com) |
+| Swagger / OpenAPI UI | [https://vitalnode-backend.onrender.com/docs](https://vitalnode-backend.onrender.com/docs) |
+| ReDoc | [https://vitalnode-backend.onrender.com/redoc](https://vitalnode-backend.onrender.com/redoc) |
+| Health check | [https://vitalnode-backend.onrender.com/health](https://vitalnode-backend.onrender.com/health) |
 
-## System architecture
+Render services may take a short time to wake after inactivity. If the first request is slow, wait a moment and retry.
 
-```text
-                         ┌─────────────────────────────────────────┐
-                         │ React + TypeScript clinical dashboard   │
-                         │ queue · intake · result · audit · surge │
-                         └──────────────────┬──────────────────────┘
-                                            │ REST + WebSocket
-                         ┌──────────────────▼──────────────────────┐
-                         │ FastAPI application                     │
-                         │ JWT auth · role guards · API contracts  │
-                         └──────────────────┬──────────────────────┘
-                                            │
-  Intake + vitals ──► Data quality ──► Clinical rules ──► ML engine
-                                            │                   │
-                                            └──── Decision fusion ◄┘
-                                                         │
-                                                  Final safety gate
-                                                         │
-                                              Recommendation + audit event
-                                                         │
-                                  Clinician accept / override / reassess
-                                                         │
-                          PostgreSQL queue + notifications + WebSocket update
-```
-
-### Safety model
-
-VitalNode is deliberately designed as decision support, not autonomous triage.
-
-1. **Data quality:** Checks for missing vital/context fields, stale vitals (over 30 minutes), invalid blood-pressure relationships, and conflicting data.
-2. **Independent clinical rules:** Illustrative rules identify signals including severe hypoxaemia, hypotension, shock pattern, altered consciousness, danger signs, paediatric tachycardia, low data completeness, and zero-history altered consciousness.
-3. **ML inference:** The backend uses a deterministic mock engine by default. An XGBoost adapter can be selected when a model path is configured.
-4. **Decision fusion:** If rules indicate a more severe acuity than the model, the more conservative acuity wins. Poor completeness caps confidence and applies conservative handling.
-5. **Safety gate:** The final gate can raise `NORMAL` to `VERIFY` or `URGENT_REVIEW` because of low confidence, critical/conflicting data, danger-sign mismatch, paediatric critical acuity, or model unavailability. It never downgrades the existing safety level.
-6. **Clinician decision:** Recommendations are pending until a qualified user accepts or overrides them. Overrides preserve the AI result and rationale in the audit trail.
-
-## Technology stack
-
-| Layer | Technologies |
-| --- | --- |
-| Frontend | React 18, TypeScript, Vite, Zustand, Tailwind CSS, Recharts, Lucide |
-| Backend | Python 3.12, FastAPI, Pydantic, SQLAlchemy async, Alembic, Structlog |
-| Data | PostgreSQL 16 (Docker Compose); SQLite-compatible test configuration |
-| Security | JWT bearer authentication, bcrypt password hashing, backend-enforced role guards |
-| ML/NLP | Pluggable mock or XGBoost engine; optional Gemini-compatible symptom extraction with safe fallback/caching |
-| Live workflow | FastAPI WebSocket queue stream and asynchronous reassessment worker |
-| Packaging | Docker and Docker Compose for the backend and database |
-
-## AI and ML design
-
-### What the model does
-
-VitalNode’s ML layer estimates a patient’s triage category on an **Emergency Severity Index (ESI) 1–5 scale**. The backend maps this to the user-facing queue:
-
-| Model output | VitalNode acuity | Meaning in this prototype |
-| --- | --- | --- |
-| ESI 1 | `CRITICAL` | Immediate, life-threatening concern |
-| ESI 2 | `HIGH` | Emergent concern |
-| ESI 3 | `MODERATE` | Urgent concern |
-| ESI 4–5 | `LOW` | Lower-priority concern |
-
-The model is **one input to a safety-gated recommendation**. It does not make the final clinical decision and cannot override the independent safety logic.
-
-### Inference options
-
-| Engine | When used | Behaviour |
-| --- | --- | --- |
-| `mock` (default) | Local demo and development | Deterministic threshold-based model simulation, explicitly returned as `MODEL_STATUS=MOCK`. It keeps the competition demo reproducible without requiring external services. |
-| `xgboost` | When `ML_ENGINE=xgboost` and a model artifact is available | Loads the supplied XGBoost model JSON and returns the predicted ESI class, probability-derived confidence, and generated explanation factors. |
-| Rules-only fallback | When a configured ML engine cannot serve a prediction | Uses the clinical-rule pathway with reduced confidence and verification-oriented handling; the model status is exposed as unavailable. |
-
-### XGBoost feature set
-
-The configured production-style inference adapter builds a 14-feature vector from information available at triage time. Missing vital signs remain missing values for model handling and are also counted explicitly.
-
-| Feature group | Features |
-| --- | --- |
-| Demographics | Age, encoded sex |
-| Current observations | Heart rate, respiratory rate, SpO₂, systolic BP, diastolic BP, temperature |
-| Queue and trend context | Time in queue, heart-rate change, SpO₂ change |
-| NLP-derived context | Current symptom-risk score, history-risk score |
-| Data reliability | Missing-vital-sign count |
-
-For reassessments, the system derives heart-rate and SpO₂ deltas from the latest two vital records. This lets the model receive a limited deterioration/improvement signal rather than only a single snapshot.
-
-### NLP-assisted context, with safe fallbacks
-
-For normal XGBoost assessments, an optional Gemini-compatible call transforms the free-text complaint and available history into four tightly bounded fields: a primary symptom, symptom-risk score (`0–4`), history-risk score (`0–3`), and one-sentence reasoning. The numeric scores are range-checked before entering the model.
-
-The NLP result is cached by complaint/history and stored with the assessment, so unchanged reassessments do not make repeat requests. If no API key is configured or the request fails, VitalNode returns a conservative fallback extraction and continues the safety workflow. Synthetic surge cases always use local deterministic keyword extraction, ensuring the 3× demo is repeatable and does not consume API quota.
-
-### Confidence and explainability
-
-- XGBoost confidence is the highest class probability, displayed as a percentage.
-- The mock engine emits deterministic confidence based on available observations and the applied pathway.
-- Low data completeness caps confidence at 55% in decision fusion; confidence below 50% escalates the safety status to at least `VERIFY`.
-- The user interface receives top contributing factors, matched clinical rules, data-quality findings, safety-gate reasons, model version, and model status alongside the recommendation.
-
-### Why this is safer than model-only triage
-
-The system separates statistical inference from safety rules. For example, rules can escalate for severe oxygen desaturation, hypotension, shock pattern, altered consciousness, immediate danger signs, or vulnerable paediatric/zero-history presentations—even if model confidence is low or the model output suggests a lower acuity. This conservative fusion policy is intentional: it prioritises review over silent under-triage in uncertain cases.
-
-## Repository layout
-
-```text
-.
-├── README.md
-├── core_engine.py                       # Standalone ML/NLP prototype engine
-├── vitalnode/                           # React frontend
-│   ├── src/screens/                     # Dashboard, queue, assessment, audit, surge, settings
-│   ├── src/components/                  # Layout and shared clinical UI components
-│   ├── src/lib/                         # REST and WebSocket clients
-│   ├── src/store/                       # Zustand application state
-│   └── package.json
-└── vitalnode-backend/                   # FastAPI backend
-    ├── app/api/v1/                      # Authenticated REST and WebSocket routes
-    ├── app/services/                    # Assessment, safety, queue, audit, surge workflows
-    ├── app/ml/                          # ML interface, mock engine, XGBoost adapter/model assets
-    ├── app/models/                      # SQLAlchemy database models
-    ├── app/workers/                     # Reassessment scheduler
-    ├── migrations/                      # Alembic schema migration
-    ├── tests/                           # Backend unit/API tests
-    ├── seed.py                          # Demo users and synthetic patient records
-    ├── Dockerfile
-    └── docker-compose.yml
-```
-
-## Quick start
-
-### Prerequisites
-
-- Docker Desktop with Docker Compose
-- Node.js 20+ and npm
-
-### 1. Start PostgreSQL and the API
-
-```bash
-cd vitalnode-backend
-docker-compose up --build
-```
-
-In a second terminal, initialise the schema and load the competition demo data:
-
-```bash
-cd vitalnode-backend
-docker-compose exec backend alembic upgrade head
-docker-compose exec backend python seed.py
-```
-
-The API runs at `http://localhost:8000`.
-
-- Interactive API documentation: `http://localhost:8000/docs`
-- OpenAPI document: `http://localhost:8000/openapi.json`
-- Health check: `http://localhost:8000/health`
-
-### 2. Start the frontend
-
-```bash
-cd vitalnode
-npm install
-npm run dev
-```
-
-Open the Vite URL displayed in the terminal, normally `http://localhost:5173`.
-
-### Optional frontend environment
-
-The defaults target the local backend. To point at another deployment, create `vitalnode/.env.local`:
-
-```env
-VITE_API_URL=http://localhost:8000
-VITE_WS_URL=ws://localhost:8000/api/v1/ws/queue
-```
-
-### Demo accounts
+### Demo access
 
 | Role | Staff ID | Password |
 | --- | --- | --- |
@@ -217,74 +27,268 @@ VITE_WS_URL=ws://localhost:8000/api/v1/ws/queue
 | Clinician | `CL-0112` | `demo123` |
 | Administrator | `AD-0031` | `demo123` |
 
-These are seeded demonstration accounts only; do not reuse these credentials outside the local prototype.
+These credentials are provided only for the public challenge demo.
 
-## Demo walkthrough
+## The challenge
 
-1. Sign in as `TN-0421`.
-2. Open **Patient Queue** to review the prioritised synthetic patients.
-3. Select a patient to inspect the AI result: acuity, confidence, data completeness, factors, rules, and safety badge.
-4. Submit an **accept** decision or an **override** with a reason to show clinician control.
-5. Open **Audit Log** to show that prediction and decision events are preserved.
-6. Open **Settings**, adjust the reassessment intervals, and save them. Active queued encounters are rescheduled and the change is audited.
-7. Open **Surge Mode** and activate the 3× simulation. With the supplied seed, 20 normal active cases generate 40 synthetic arrivals for 60 total cases.
-8. Use **Reassessment** or wait for the scheduled worker to demonstrate follow-up alerts and a refreshed queue.
+Emergency departments must continuously sort patients while information is incomplete, vital signs evolve, and arrival volume can change suddenly. A first-come-first-served workflow can hide clinical deterioration, make prioritisation difficult to explain, and leave audit gaps when staff are under pressure.
+
+VitalNode demonstrates a safer decision-support workflow:
+
+- Patients are arranged by acuity, safety status, reassessment urgency, and waiting time.
+- Clinical safety rules run independently from the ML model.
+- Recommendations include confidence, contributing factors, data quality, and safety-gate reasons.
+- Staff control the queue: AI output remains pending until accepted or overridden.
+- Reassessment timers and live WebSocket updates keep the queue current.
+- Surge Mode demonstrates how the queue behaves during a 3x arrival-volume scenario.
+- Login, AI prediction, decision, reassessment, configuration, and surge events are audit logged.
+
+## What judges can try
+
+1. Sign in at the live frontend with the triage nurse account.
+2. Open Dashboard and search for patient records by name, ID, or complaint.
+3. Create a New Assessment using the five-step intake flow: patient information, danger signs, vitals, chief complaint, and review.
+4. Try a known patient name and age, such as `Rajesh Kumar` age `58`, to see the automatic history lookup banner.
+5. Enter or record a chief complaint. Voice transcription is routed through the backend, and symptom chips remain suggestions until staff confirm them.
+6. Review the AI Result page to inspect ESI acuity, confidence, model version, safety status, clinical rules, and top contributing factors.
+7. Accept the recommendation, override it with a reason, or request reassessment. Only then does the active queue update.
+8. Open Patient Queue to see ESI 1-2, ESI 3, and ESI 4-5 columns with safety flags, vitals, waiting time, and bed-assignment workflow.
+9. Open Reassessment, Settings, Audit Log, Analytics, System Info, and Surge Mode to review operational behavior and traceability.
+
+## Key capabilities
+
+| Capability | Current implementation |
+| --- | --- |
+| Deployed full-stack demo | React/Vite frontend and FastAPI backend are deployed on Render for challenge review. |
+| Structured triage intake | Captures patient demographics, arrival mode, pregnancy status, danger signs, core vitals, AVPU, chief complaint, symptoms, and history context. |
+| Safety-gated decisioning | Data quality checks, clinical safety rules, ML output, decision fusion, and a final safety gate run before staff review. |
+| XGBoost-ready ML layer | Backend includes a 14-feature XGBoost adapter and bundled model artifact, with a deterministic fallback when a configured model is unavailable. |
+| NLP-assisted context | Complaint and history text can be converted into bounded symptom-risk and history-risk scores using a Gemini-compatible workflow with caching and fallback behavior. |
+| Human oversight | Staff can accept, override, or request reassessment. Overrides require a reason and preserve the original AI recommendation. |
+| Dynamic priority queue | Server-side priority ordering combines acuity, safety flags, reassessment status, and waiting context. |
+| Live updates | A FastAPI WebSocket endpoint broadcasts queue updates to connected frontend sessions. |
+| Reassessment workflow | Configurable timers schedule follow-up review by acuity. A background worker checks overdue cases every minute and creates notifications. |
+| Auditability | Major workflow events are persisted in an audit log and shown in the UI. |
+| Surge readiness | Surge Mode creates a 3x-volume operational scenario while keeping safety rules, reassessment timers, and audit logging active. |
+| Voice and device adapters | Backend supports voice transcription providers, keyword symptom extraction, and device vital-reading simulation routes. |
+| Admin visibility | System Info and Settings expose model/configuration status, hospital settings, and reassessment interval controls. |
+
+## System architecture
+
+```text
+React + TypeScript clinical dashboard
+  Dashboard | Queue | New Assessment | AI Result | Reassessment
+  Audit | Analytics | Surge | System Info | Settings
+        |
+        | REST + WebSocket
+        v
+FastAPI application
+  JWT auth | role guards | API contracts | CORS | health checks
+        |
+        +--> PostgreSQL persistence
+        |     patients | encounters | assessments | vitals
+        |     recommendations | decisions | queue | audit | notifications
+        |
+        +--> Assessment pipeline
+              intake + vitals + history
+                    |
+                    v
+              data quality checks
+                    |
+                    v
+              independent clinical rules
+                    |
+                    v
+              ML inference adapter
+              XGBoost engine or deterministic fallback
+                    |
+                    v
+              decision fusion
+                    |
+                    v
+              final safety gate
+                    |
+                    v
+              staff accept | override | reassess
+                    |
+                    v
+              queue update + audit event + WebSocket broadcast
+```
+
+## Safety model
+
+VitalNode is deliberately designed as decision support, not autonomous triage.
+
+1. Data quality checks identify missing critical vitals, missing context, stale vitals over 30 minutes, and invalid blood-pressure relationships.
+2. Independent clinical rules flag safety signals such as severe hypoxia, low SpO2, hypotension, shock pattern, tachypnoea, altered consciousness, danger signs, anticoagulant-plus-trauma risk, pediatric tachycardia, low completeness, and zero-history altered consciousness.
+3. ML inference estimates ESI acuity through the configured engine. The XGBoost path wraps `app/ml/core_engine.py`; the fallback engine keeps the workflow available when model loading or external services are unavailable.
+4. Decision fusion takes the more conservative result when clinical rules indicate higher risk than the model. Low data completeness can cap confidence and mark the pathway conservative.
+5. The safety gate can escalate `NORMAL` to `VERIFY` or `URGENT_REVIEW` for low confidence, poor or conflicting data, danger-sign mismatch, pediatric critical acuity, or model unavailability. It never downgrades an existing safety status.
+6. Clinical users remain in control. A recommendation does not enter the live queue until accepted or overridden, and reassessment requests create follow-up workflow instead of silently changing acuity.
+
+## AI and ML design
+
+VitalNode maps Emergency Severity Index output to the queue-facing acuity labels used by the application:
+
+| Model output | VitalNode acuity | Queue meaning |
+| --- | --- | --- |
+| ESI 1 | `CRITICAL` | Immediate, life-threatening concern |
+| ESI 2 | `HIGH` | Emergent concern |
+| ESI 3 | `MODERATE` | Urgent concern |
+| ESI 4-5 | `LOW` | Lower-priority concern |
+
+The model is one input to a safety-gated recommendation. It does not diagnose, treat, or make the final clinical decision.
+
+### XGBoost feature set
+
+The current XGBoost adapter builds a 14-feature vector from information available at triage time:
+
+| Feature group | Features |
+| --- | --- |
+| Demographics | Age, encoded sex |
+| Current observations | Heart rate, respiratory rate, SpO2, systolic BP, diastolic BP, temperature |
+| Queue and reassessment context | Time in queue, heart-rate delta, SpO2 delta |
+| NLP-derived context | Current symptom-risk score, history-risk score |
+| Data reliability | Missing-vital-sign count |
+
+For reassessments, the backend reads the latest two vital records and derives heart-rate and SpO2 deltas, allowing the model to receive a limited deterioration or improvement signal rather than only a single snapshot.
+
+### NLP-assisted context
+
+The backend can call a Gemini-compatible NLP workflow to transform complaint and history text into bounded fields:
+
+- Primary symptom
+- Symptom-risk score from `0` to `4`
+- History-risk score from `0` to `3`
+- One-sentence reasoning
+
+The numeric scores are range-checked before entering the XGBoost model. Results are cached by complaint/history text, and reassessments reuse stored extraction when the complaint has not changed. If the external NLP call is unavailable, the backend continues with a conservative fallback.
+
+### Explainability
+
+The frontend receives and displays:
+
+- Recommended acuity and ESI level
+- Confidence percentage
+- Model version and model status
+- Data completeness
+- Key reasons and top contributing factors
+- Matched clinical safety rules
+- Safety-gate status and safety flag
+- Whether the conservative pathway was applied
+
+## Technology stack
+
+| Layer | Technologies |
+| --- | --- |
+| Frontend | React 18, TypeScript, Vite, Zustand, Tailwind CSS, Recharts, Lucide |
+| Backend | Python 3.12, FastAPI, Pydantic v2, SQLAlchemy async, Alembic, Structlog |
+| Database | PostgreSQL for application state; SQLite-compatible test configuration |
+| Authentication | JWT bearer authentication, bcrypt password hashing, backend-enforced role guards |
+| ML/NLP | XGBoost, pandas, NumPy, Google GenAI/Gemini-compatible extraction, deterministic fallback engine |
+| Live workflow | FastAPI WebSocket queue stream and asynchronous reassessment worker |
+| Deployment | Render frontend and backend services; Docker support for backend/database development |
+
+## Repository layout
+
+```text
+.
+|-- README.md
+|-- VitalNode_ML/
+|   |-- core_engine.py                  # Standalone Groq + XGBoost prototype engine
+|   |-- core_engine_gemini.py           # Gemini-oriented engine variant
+|   |-- final_train.py                  # 14-feature XGBoost training script
+|   |-- vitalnode_final_xgboost.json    # Model artifact
+|   `-- test_core*.py                   # Prototype engine tests
+|-- vitalnode/
+|   |-- src/screens/                    # Dashboard, queue, assessment, audit, surge, settings, system views
+|   |-- src/components/                 # Layout and shared clinical UI components
+|   |-- src/lib/                        # REST and WebSocket clients
+|   |-- src/store/                      # Zustand application state
+|   `-- package.json
+`-- vitalnode-backend/
+    |-- app/api/v1/                     # REST and WebSocket routes
+    |-- app/services/                   # Assessment, safety, queue, audit, surge, device, voice workflows
+    |-- app/ml/                         # ML interface, fallback engine, XGBoost adapter, model artifact
+    |-- app/models/                     # SQLAlchemy database models
+    |-- app/schemas/                    # Pydantic request/response schemas
+    |-- app/workers/                    # Reassessment scheduler
+    |-- app/data/                       # Pre-loaded history lookup records
+    |-- migrations/                     # Alembic schema migration
+    |-- tests/                          # Backend unit/API tests
+    |-- seed.py                         # Challenge demo users and records
+    |-- Dockerfile
+    `-- docker-compose.yml
+```
 
 ## API surface
 
-All application endpoints are prefixed with `/api/v1`; most require a JWT bearer token returned by `POST /auth/login`.
+All application routes are exposed under `/api/v1`, except `/health`.
 
 | Area | Representative routes | Purpose |
 | --- | --- | --- |
-| Authentication | `POST /auth/login`, `GET /auth/me`, `POST /auth/logout` | Staff session and audit-aware logout. |
-| Patient and assessment | `POST /patients/assess`, `GET /patients/search`, `GET /patients/{id}/timeline` | Submit intake, find patients, and inspect timelines. |
-| AI workflow | `POST /assessments/{id}/predict`, `POST /assessments/{id}/decision`, `GET /assessments/{id}/quality` | Run the pipeline, record clinical decision, and view data quality. |
-| Queue/reassessment | `GET /queue`, `GET /queue/summary`, `POST /queue/{id}/complete`, `GET /reassessments`, `POST /reassessments/{id}` | View/complete prioritised cases and manage reassessment. |
-| Operations | `GET /notifications`, `GET /audit`, `POST /surge/start`, `POST /surge/stop`, `GET /surge/status` | Operational notifications, audit, and deterministic surge simulation. |
-| Administration | `GET /system/status`, `GET /system/config`, `PUT /system/reassessment-intervals` | System visibility and reassessment configuration. |
-| Devices and voice | `/devices/*`, `POST /voice/transcribe`, `POST /voice/extract-symptoms` | Simulated device readings and assisted intake. |
-| Demo and live updates | `/demo/*` (demo mode), `WS /ws/queue` | Reset/deterioration scenarios and real-time queue broadcasts. |
+| Authentication | `POST /auth/login`, `GET /auth/me`, `POST /auth/logout` | Staff login and audit-aware logout. |
+| Patient and assessment | `POST /patients/assess`, `GET /patients/search`, `GET /patients/{id}/timeline` | Submit intake, search records, and inspect timeline events. |
+| AI workflow | `POST /assessments/{id}/predict`, `POST /assessments/{id}/decision`, `GET /assessments/{id}/quality` | Re-run the pipeline, save staff decisions, and view data quality. |
+| Queue | `GET /queue`, `GET /queue/summary`, `POST /queue/{id}/complete` | View ordered cases, summary counts, and mark bed assignment. |
+| Reassessment | `GET /reassessments`, `POST /reassessments/{id}` | List due cases and trigger reassessment. |
+| Notifications and audit | `GET /notifications`, `POST /notifications/{id}/read`, `GET /audit` | Operational alerts and traceable event history. |
+| Surge Mode | `POST /surge/start`, `POST /surge/stop`, `GET /surge/status` | Start, stop, and inspect the 3x-volume scenario. |
+| System | `GET /system/status`, `GET /system/config`, `PUT /system/reassessment-intervals` | Admin status, configuration, and reassessment timer updates. |
+| Devices and voice | `/devices/*`, `POST /voice/transcribe`, `POST /voice/extract-symptoms` | Device vital simulation and assisted intake. |
+| History and live updates | `GET /history/lookup`, `WS /ws/queue` | History context lookup and real-time queue broadcasts. |
+| Health | `GET /health` | API, database, model, and voice-provider health summary. |
 
-Refer to the running Swagger UI for request and response schemas.
+Use the deployed Swagger UI for request and response schemas: [https://vitalnode-backend.onrender.com/docs](https://vitalnode-backend.onrender.com/docs).
 
 ## Configuration
 
-The backend reads environment variables (and, for local execution, `vitalnode-backend/.env`). Docker Compose supplies safe development defaults. Never use the defaults in a real deployment.
+The backend reads environment variables directly and also supports a local `.env` file. Render should provide production values through service environment settings.
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `DATABASE_URL` | Local PostgreSQL URL | Async application database connection. |
-| `DATABASE_SYNC_URL` | Local PostgreSQL URL | Sync connection used by Alembic. |
-| `JWT_SECRET_KEY` | Insecure development value | Must be replaced with a strong secret outside local demo use. |
-| `FRONTEND_URL` | `http://localhost:5173` | Allowed frontend origin. |
-| `DEMO_MODE` | `true` | Enables demo-only endpoints. |
-| `ML_ENGINE` | `mock` | Selects `mock` or `xgboost`. |
-| `MODEL_PATH` | Empty | Model path required for the XGBoost path. |
-| `GEMINI_API_KEY` | Empty | Optional key for the NLP-enabled model workflow. |
-| `SPEECH_PROVIDER` | `mock` | `mock`, `openai_whisper`, `assemblyai`, or other configured option. |
-| `SPEECH_API_KEY` | Empty | Secret used only by the backend speech integration. |
+| Variable | Purpose |
+| --- | --- |
+| `APP_ENV` | `development` or `production`. |
+| `DATABASE_URL` | Async PostgreSQL connection URL. |
+| `DATABASE_SYNC_URL` | Sync PostgreSQL URL used by Alembic migrations. |
+| `JWT_SECRET_KEY` | JWT signing secret; must be strong outside local development. |
+| `FRONTEND_URL` | Allowed browser origin, set to `https://vital-node.onrender.com/` for the deployed frontend. |
+| `DEMO_MODE` | Enables challenge scenario/reset endpoints when `true`. |
+| `ML_ENGINE` | Selects `mock` or `xgboost`. |
+| `MODEL_PATH` | Optional model path. If omitted, the backend XGBoost core looks for the bundled model artifact in `app/ml/`. |
+| `GEMINI_API_KEY` | Optional key for NLP-assisted symptom and history extraction. |
+| `SPEECH_PROVIDER` | `mock`, `openai_whisper`, `assemblyai`, or another configured provider. |
+| `SPEECH_API_KEY` | Secret used only by the backend speech integration. |
+| `REASSESSMENT_*_MIN` | Per-acuity reassessment intervals. |
 
-To enable the XGBoost adapter locally, configure a valid model file and restart the backend:
+Frontend deployment variables:
 
 ```env
-ML_ENGINE=xgboost
-MODEL_PATH=/absolute/path/to/vitalnode_final_xgboost.json
-GEMINI_API_KEY=your_optional_key
+VITE_API_URL=https://vitalnode-backend.onrender.com
+VITE_WS_URL=wss://vitalnode-backend.onrender.com/api/v1/ws/queue
 ```
 
-If XGBoost or an external NLP service is unavailable, the assessment flow falls back to safe mock/rules-based handling and exposes the model status to the user.
+## Local development
 
-## Reassessment and surge behaviour
+The deployed Render links are the main path for challenge review. For local development, the backend can be run with Docker Compose and the frontend with Vite.
 
-### Reassessment
+### Backend
 
-Default reassessment intervals are 5 minutes for `CRITICAL`, 15 for `HIGH`, 30 for `MODERATE`, and 60 for `LOW`. Administrators can set each interval between 1 and 180 minutes. The background worker runs every 60 seconds, checks overdue waiting encounters, creates notifications as required, and broadcasts a queue refresh.
+```bash
+cd vitalnode-backend
+docker-compose up --build
+docker-compose exec backend alembic upgrade head
+docker-compose exec backend python seed.py
+```
 
-The reassessment feature considers the latest and previous vital signs so the ML feature set can capture changes in heart rate and oxygen saturation.
+### Frontend
 
-### 3× surge simulation
+```bash
+cd vitalnode
+npm install
+npm run dev
+```
 
-Surge mode counts active non-surge encounters, then creates exactly twice that number of deterministic synthetic arrivals. These cases travel through the same assessment, clinical-rule, safety-gate, queue, and audit paths. Extra surge cases use local deterministic symptom extraction rather than consuming Gemini/API calls. Stopping surge mode marks active synthetic surge encounters as discharged.
+Vite prints the browser URL in the terminal. Keep local secrets in `.env` files and do not commit them.
 
 ## Validation
 
@@ -303,21 +307,19 @@ pip install -r requirements.txt
 pytest tests/ -v
 ```
 
-The frontend production build has been verified in this workspace. The backend test suite covers authentication, assessments, clinical rules, danger signs, data quality, queue ordering, safety-gate behaviour, and vital validation. Ensure all packages from `requirements.txt` are installed in the Python environment before running it.
+Backend tests cover authentication, assessment creation, clinical rules, danger signs, data quality, queue ordering, safety-gate behavior, and vital validation.
 
 ## Current scope and roadmap
 
-The system is intentionally bounded as a competition prototype. Before any real-world consideration, it would require:
+VitalNode is intentionally bounded as an innovation-challenge prototype. Before any real-world consideration, it would require:
 
-- Clinical governance and validation with representative, ethically governed datasets.
-- Expert review and calibration of every triage threshold and safety rule.
-- Bias, drift, calibration, and patient-safety monitoring.
-- Durable configuration/state for multi-instance deployment rather than prototype in-memory state.
-- Production secrets management, hardened deployment, access management, and security assessment.
-- Consent, privacy, data-retention, regulatory, and hospital-integration work.
-- Usability testing with emergency-care staff and a formal incident/escalation process.
-
-No real patient records are included in this repository.
+- Clinical governance, expert review, and prospective validation.
+- Calibration and monitoring for bias, drift, confidence, and patient-safety risk.
+- Hospital integration work for EHR, ABDM/FHIR, devices, identity, and operational escalation.
+- Production-grade secrets management, access control, logging policy, and security assessment.
+- Privacy, consent, data-retention, and regulatory review.
+- Usability testing with emergency-care staff.
+- Durable multi-instance state for surge mode and other operational controls.
 
 ## Submission details
 
@@ -325,7 +327,11 @@ No real patient records are included in this repository.
 | --- | --- |
 | Challenge | Accenture Innovation Challenge 2026 |
 | Project | VitalNode |
+| Frontend demo | [https://vital-node.onrender.com/](https://vital-node.onrender.com/) |
+| Backend API | [https://vitalnode-backend.onrender.com](https://vitalnode-backend.onrender.com) |
 | Team name | `<add team name>` |
 | Team members | `<add names and responsibilities>` |
 | Demo video | `<add link>` |
 | Presentation | `<add link>` |
+
+VitalNode: AI-assisted triage. Human-led care.
