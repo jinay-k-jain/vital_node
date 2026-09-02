@@ -1,305 +1,172 @@
 # VitalNode Backend
 
-> **Prototype — Accenture Innovation Challenge 2026**  
-> AI-assisted emergency triage system  
-> ⚠️ NOT clinically validated. NOT for real patient care. Synthetic data only.
+FastAPI backend for the VitalNode emergency triage prototype, built for the Accenture Innovation Challenge 2026.
 
----
+The backend handles authentication, patient intake, assessment persistence, AI recommendation generation, clinical safety rules, reassessment timers, queue ordering, notifications, audit logging, surge-mode scenarios, voice transcription, device simulation, and system configuration.
 
-## Quick Start (Docker)
+Responsible-use notice: this service is for challenge evaluation only. It is not clinically validated, is not a medical device, and must not be used for real patient care, diagnosis, or treatment.
 
-The fastest way to run everything:
+## Deployed service
+
+| Resource | Link |
+| --- | --- |
+| Backend API | [https://vitalnode-backend.onrender.com](https://vitalnode-backend.onrender.com) |
+| Swagger / OpenAPI UI | [https://vitalnode-backend.onrender.com/docs](https://vitalnode-backend.onrender.com/docs) |
+| ReDoc | [https://vitalnode-backend.onrender.com/redoc](https://vitalnode-backend.onrender.com/redoc) |
+| Health check | [https://vitalnode-backend.onrender.com/health](https://vitalnode-backend.onrender.com/health) |
+
+The deployed frontend is [https://vital-node.onrender.com/](https://vital-node.onrender.com/).
+
+## Demo credentials
+
+| Staff ID | Password | Role |
+| --- | --- | --- |
+| `TN-0421` | `demo123` | Triage Nurse |
+| `CL-0112` | `demo123` | Clinician |
+| `AD-0031` | `demo123` | Administrator |
+
+## Core request flow
+
+```text
+POST /api/v1/patients/assess
+        |
+        v
+PatientService creates or updates:
+  Patient -> Encounter -> Assessment -> Vital -> QueueEntry
+        |
+        v
+AssessmentService.run_ai_assessment()
+  compute_data_quality()
+  evaluate_clinical_rules()
+  ml_engine.predict()
+  decision_fusion.fuse()
+  safety_gate.run_safety_gate()
+        |
+        v
+AIRecommendation is stored
+        |
+        v
+POST /api/v1/assessments/{id}/decision
+        |
+        v
+Staff accept | override | request reassessment
+        |
+        v
+Queue priority, reassessment timer, audit log, and WebSocket updates
+```
+
+The AI recommendation is not treated as the final queue decision until a staff action is recorded.
+
+## API overview
+
+All routes below are prefixed with `/api/v1`, except `/health`.
+
+| Area | Routes | Purpose |
+| --- | --- | --- |
+| Auth | `POST /auth/login`, `GET /auth/me`, `POST /auth/logout` | Staff sessions and audit-aware logout. |
+| Patients | `POST /patients/assess`, `GET /patients/search`, `GET /patients/{id}/timeline` | Intake, search, and patient timeline. |
+| Assessments | `POST /assessments/{id}/predict`, `POST /assessments/{id}/decision`, `GET /assessments/{id}/quality` | AI pipeline, staff decision, and data quality. |
+| Queue | `GET /queue`, `GET /queue/summary`, `POST /queue/{id}/complete` | Ordered queue, summary, and bed assignment. |
+| Reassessment | `GET /reassessments`, `POST /reassessments/{id}` | Due cases and manual reassessment triggers. |
+| Notifications | `GET /notifications`, `POST /notifications/{id}/read`, `POST /notifications/read-all` | Operational alerts. |
+| Audit | `GET /audit` | Traceable event history. |
+| Surge | `POST /surge/start`, `POST /surge/stop`, `GET /surge/status` | 3x-volume scenario controls. |
+| Devices | `POST /devices/register`, `GET /devices`, `GET /devices/{id}`, `POST /devices/{id}/simulate`, `POST /devices/{id}/disconnect` | Device simulation and vital ingestion. |
+| Voice | `POST /voice/transcribe`, `POST /voice/extract-symptoms` | Backend-protected speech provider calls and symptom suggestions. |
+| History | `GET /history/lookup` | Name-and-age history context lookup. |
+| System | `GET /system/status`, `GET /system/config`, `PUT /system/reassessment-intervals` | Admin status and reassessment configuration. |
+| Live updates | `WS /ws/queue` | Real-time queue broadcasts. |
+| Health | `GET /health` | API, database, model, and voice-provider status. |
+
+## ML and safety pipeline
+
+- `app/services/assessment_service.py` orchestrates the full pipeline.
+- `app/services/data_quality_service.py` computes completeness, missing fields, stale vitals, and conflicts.
+- `app/services/clinical_rules.py` evaluates independent safety rules before the final recommendation.
+- `app/ml/xgboost_engine.py` wraps the 14-feature XGBoost core engine when `ML_ENGINE=xgboost`.
+- `app/ml/core_engine.py` loads the bundled model artifact and can use Gemini-compatible NLP extraction.
+- `app/ml/mock_engine.py` provides a deterministic fallback when the configured ML path is unavailable.
+- `app/services/decision_fusion.py` combines model output, rule output, age context, and data quality.
+- `app/services/safety_gate.py` can escalate safety status but never downgrade it.
+
+The XGBoost feature vector includes age, sex, heart rate, respiratory rate, SpO2, systolic BP, diastolic BP, temperature, time in queue, heart-rate delta, SpO2 delta, symptom-risk score, history-risk score, and missing-vital-sign count.
+
+## Local development
+
+### Docker workflow
 
 ```bash
 cd vitalnode-backend
-cp .env.example .env          # copy and review settings
-docker-compose up --build     # starts PostgreSQL + backend
-```
-
-Then run migrations and seed:
-
-```bash
+docker-compose up --build
 docker-compose exec backend alembic upgrade head
 docker-compose exec backend python seed.py
 ```
 
-API docs at: **http://localhost:8000/docs**
-
----
-
-## Quick Start (Local)
-
-### Requirements
-- Python 3.12+
-- PostgreSQL 14+
-
-### Setup
+### Python workflow
 
 ```bash
 cd vitalnode-backend
-
-# Create virtual environment
 python -m venv venv
-source venv/bin/activate        # macOS/Linux
-# venv\Scripts\activate         # Windows
-
-# Install dependencies
+venv\Scripts\activate
 pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env
-# Edit .env — set DATABASE_URL, DATABASE_SYNC_URL, JWT_SECRET_KEY
-```
-
-### Create the database
-
-```bash
-# In PostgreSQL:
-createdb vitalnode_db
-createuser vitalnode_user
-# or use psql:
-# CREATE DATABASE vitalnode_db;
-# CREATE USER vitalnode_user WITH PASSWORD 'your_password';
-# GRANT ALL PRIVILEGES ON DATABASE vitalnode_db TO vitalnode_user;
-```
-
-### Run migrations
-
-```bash
 alembic upgrade head
-```
-
-### Seed demo data
-
-```bash
 python seed.py
-```
-
-This creates:
-- 3 demo users (see credentials below)
-- 20 synthetic patients with full encounters, vitals, AI recommendations
-
-### Run the backend
-
-```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
----
+Create `.env` from `.env.example` and set real secrets through environment variables for any shared deployment.
 
-## Demo Credentials
+## Environment variables
 
-| Staff ID | Password | Role |
-|---|---|---|
-| TN-0421 | demo123 | Triage Nurse |
-| CL-0112 | demo123 | Clinician |
-| AD-0031 | demo123 | Administrator |
+| Variable | Purpose |
+| --- | --- |
+| `APP_ENV` | Runtime environment. |
+| `DATABASE_URL` | Async database URL used by the app. |
+| `DATABASE_SYNC_URL` | Sync database URL used by Alembic. |
+| `JWT_SECRET_KEY` | JWT signing secret. |
+| `FRONTEND_URL` | Allowed frontend origin. |
+| `DEMO_MODE` | Enables challenge demo routes when `true`. |
+| `ML_ENGINE` | `mock` or `xgboost`. |
+| `MODEL_PATH` | Optional model path for XGBoost. |
+| `GEMINI_API_KEY` | Optional NLP extraction key. |
+| `SPEECH_PROVIDER` | `mock`, `openai_whisper`, `assemblyai`, or another configured provider. |
+| `SPEECH_API_KEY` | Backend-only speech provider secret. |
+| `REASSESSMENT_CRITICAL_MIN` | Reassessment interval for critical acuity. |
+| `REASSESSMENT_HIGH_MIN` | Reassessment interval for high acuity. |
+| `REASSESSMENT_MODERATE_MIN` | Reassessment interval for moderate acuity. |
+| `REASSESSMENT_LOW_MIN` | Reassessment interval for low acuity. |
 
----
-
-## Environment Variables
-
-See `.env.example` for all variables. Key ones:
-
-| Variable | Description | Default |
-|---|---|---|
-| `DATABASE_URL` | PostgreSQL async URL | required |
-| `DATABASE_SYNC_URL` | PostgreSQL sync URL (Alembic) | required |
-| `JWT_SECRET_KEY` | JWT signing secret | required — change this! |
-| `FRONTEND_URL` | Allowed CORS origin | `http://localhost:5173` |
-| `ML_ENGINE` | `mock` or `xgboost` | `mock` |
-| `SPEECH_PROVIDER` | `mock`, `openai_whisper`, etc. | `mock` |
-| `DEMO_MODE` | Enables `/api/v1/demo/*` endpoints | `true` |
-| `LOG_LEVEL` | `DEBUG`, `INFO`, `WARNING` | `INFO` |
-
----
-
-## API Documentation
-
-Once running, visit:
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-- **OpenAPI JSON**: http://localhost:8000/openapi.json
-- **Health check**: http://localhost:8000/health
-
----
-
-## API Overview
-
-All endpoints are prefixed `/api/v1/`
-
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| POST | `/auth/login` | None | Login, receive JWT |
-| GET | `/auth/me` | Any | Current user info |
-| POST | `/auth/logout` | Any | Record logout |
-| POST | `/patients/assess` | Nurse/Clinician | Create patient + run AI |
-| GET | `/patients/search?q=` | Any | Search patients |
-| GET | `/patients/{id}/timeline` | Any | Patient event timeline |
-| POST | `/assessments/{id}/predict` | Nurse/Clinician | Re-run AI pipeline |
-| POST | `/assessments/{id}/decision` | Nurse/Clinician | Accept / Override / Reassess |
-| GET | `/assessments/{id}/quality` | Any | Data quality report |
-| GET | `/queue` | Any | Priority-ordered queue |
-| GET | `/queue/summary` | Any | Department summary stats |
-| GET | `/reassessments` | Any | Overdue reassessments |
-| POST | `/reassessments/{id}` | Nurse/Clinician | Trigger reassessment |
-| GET | `/notifications` | Any | List notifications |
-| POST | `/notifications/{id}/read` | Any | Mark as read |
-| POST | `/notifications/read-all` | Any | Mark all read |
-| GET | `/audit` | Any | Audit log |
-| POST | `/surge/start` | Nurse/Clinician | Activate 3× surge |
-| POST | `/surge/stop` | Nurse/Clinician | Deactivate surge |
-| GET | `/surge/status` | Any | Current surge state |
-| POST | `/devices/register` | Nurse/Clinician | Register device |
-| GET | `/devices` | Any | List devices |
-| POST | `/devices/{id}/simulate` | Nurse/Clinician | Simulate vital reading |
-| POST | `/devices/{id}/disconnect` | Nurse/Clinician | Simulate disconnect |
-| POST | `/voice/transcribe` | Nurse/Clinician | Transcribe audio |
-| POST | `/voice/extract-symptoms` | Nurse/Clinician | Extract symptoms from text |
-| GET | `/system/status` | **Admin only** | Detailed system status |
-| GET | `/system/config` | **Admin only** | Hospital configuration |
-| GET | `/demo/scenarios` | Any (DEMO_MODE) | List demo scenarios |
-| POST | `/demo/reset` | Any (DEMO_MODE) | Reset demo data |
-| POST | `/demo/simulate-deterioration/{id}` | Any (DEMO_MODE) | Simulate deterioration |
-| GET | `/health` | None | API health check |
-
----
-
-## Running Tests
+## Tests
 
 ```bash
-# Install test dependencies (included in requirements.txt)
-pip install pytest pytest-asyncio httpx aiosqlite
-
-# Run all tests
+cd vitalnode-backend
+pip install -r requirements.txt
 pytest tests/ -v
-
-# Run specific test file
-pytest tests/test_auth.py -v
-pytest tests/test_clinical_rules.py -v
-pytest tests/test_safety_gate.py -v
-
-# Run with coverage
-pytest tests/ --cov=app --cov-report=term-missing
 ```
 
-Tests use **in-memory SQLite** — no PostgreSQL needed to run the test suite.
+The test suite uses an SQLite-compatible configuration and covers authentication, assessments, clinical rules, danger signs, data quality, queue behavior, safety-gate behavior, and vital validation.
 
----
+## Project structure
 
-## Architecture
-
-```
-NURSE INPUT
-     ↓
-POST /api/v1/patients/assess
-     ↓
-PatientService → Patient + Encounter + Assessment + Vital + QueueEntry
-     ↓
-AssessmentService.run_ai_assessment()
-     ├─ compute_data_quality()
-     ├─ evaluate_clinical_rules()   ← INDEPENDENT from ML
-     ├─ ml_engine.predict()         ← MockMLEngine (or XGBoost later)
-     ├─ decision_fusion.fuse()      ← Combines ML + rules + quality
-     └─ safety_gate.run_safety_gate() ← Final safety check
-     ↓
-AIRecommendation stored (immutable)
-Encounter priority updated
-Reassessment timer set
-Audit event recorded
-     ↓
-NURSE DECISION → POST /api/v1/assessments/{id}/decision
-     ↓
-NurseDecision stored (AI recommendation NEVER deleted)
-Audit event recorded
-```
-
-### Key Design Principles
-- **Safety gate can only escalate**, never downgrade
-- **Clinical rules are independent from ML** — work even if ML is down
-- **All vitals stored as new rows** — enables deterioration detection
-- **AI recommendations are immutable** — override stores both AI + nurse decision
-- **Audit log is insert-only** — no updates or deletes ever
-- **Missing data is explicit** — never imputed or assumed normal
-
----
-
-## Plugging in Real XGBoost
-
-1. Set `ML_ENGINE=xgboost` in `.env`
-2. Set `MODEL_PATH=/path/to/model.json`
-3. `pip install xgboost`
-4. Implement `predict()` in `app/ml/xgboost_engine.py`
-5. Map `MLFeatures` dataclass → model feature vector
-6. Nothing else changes
-
-The `MLFeatures` dataclass is the contract between the pipeline and the model.
-
----
-
-## Connecting the Frontend
-
-The frontend currently uses **local Zustand state only** (no API calls).
-
-To connect it to this backend:
-
-1. Add an API client (axios or fetch) to the frontend
-2. Replace `appStore.ts` actions with API calls:
-   - `login()` → `POST /api/v1/auth/login`
-   - `addPatient()` + `runAI` → `POST /api/v1/patients/assess`
-   - `acceptRecommendation()` → `POST /api/v1/assessments/{id}/decision`
-   - `overrideAcuity()` → `POST /api/v1/assessments/{id}/decision`
-   - `triggerReassessment()` → `POST /api/v1/reassessments/{id}`
-   - Queue → `GET /api/v1/queue`
-   - Notifications → `GET /api/v1/notifications`
-   - Audit → `GET /api/v1/audit`
-
-The backend response shapes match the existing frontend types exactly.
-
----
-
-## Limitations
-
-This is a competition prototype. Before any real deployment:
-
-- The ML model requires clinical validation
-- Clinical rules require review by qualified medical staff
-- Full security audit is required
-- Privacy/legal assessment under Indian DPDP Act is required
-- ABDM/FHIR integration requires ABDM developer registration
-- Pediatric thresholds require separate clinical validation
-- No horizontal scaling (single-process only in current form)
-- Surge state is in-memory (resets on restart)
-
----
-
-## Project Structure
-
-```
+```text
 vitalnode-backend/
-├── app/
-│   ├── main.py              ← FastAPI app entry point
-│   ├── core/                ← Config, security, logging, exceptions
-│   ├── db/                  ← Database engine and session
-│   ├── models/              ← SQLAlchemy ORM models (11 tables)
-│   ├── schemas/             ← Pydantic input/output schemas
-│   ├── api/v1/              ← All API routers (14 files)
-│   ├── services/            ← Business logic (12 services)
-│   ├── ml/                  ← ML interface, mock engine, XGBoost stub
-│   └── workers/             ← Background reassessment timer worker
-├── migrations/              ← Alembic database migrations
-├── tests/                   ← pytest test suite (8 test files)
-├── seed.py                  ← Demo data seeder
-├── requirements.txt
-├── alembic.ini
-├── .env.example
-├── Dockerfile
-├── docker-compose.yml
-├── BACKEND_IMPLEMENTATION_PLAN.md
-└── README.md
+|-- app/
+|   |-- main.py             # FastAPI app entry point
+|   |-- core/               # Config, security, logging, exceptions
+|   |-- db/                 # Database engine and sessions
+|   |-- models/             # SQLAlchemy ORM models
+|   |-- schemas/            # Pydantic schemas
+|   |-- api/v1/             # REST and WebSocket routers
+|   |-- services/           # Business logic
+|   |-- ml/                 # ML interface, fallback engine, XGBoost adapter
+|   |-- data/               # History lookup records
+|   `-- workers/            # Background reassessment worker
+|-- migrations/             # Alembic migrations
+|-- tests/                  # Pytest suite
+|-- seed.py                 # Challenge demo seeding script
+|-- requirements.txt
+|-- Dockerfile
+`-- docker-compose.yml
 ```
 
----
-
-*VitalNode — Prototype for Accenture Innovation Challenge 2026*  
-*AI-assisted triage. Human-led care.*
+VitalNode backend: AI-assisted triage, human-led decisions.
