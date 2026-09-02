@@ -1,50 +1,51 @@
-# React + TypeScript + Vite
+# VitalNode Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + TypeScript frontend for the VitalNode emergency triage prototype.
 
-Currently, two official plugins are available:
+Live demo: [https://vital-node.onrender.com/](https://vital-node.onrender.com/)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## What it includes
 
-## Expanding the ESLint configuration
+- Secure staff login against the FastAPI backend.
+- Dashboard search by patient name, patient ID, or complaint.
+- Five-step new assessment flow with demographics, danger signs, vitals, chief complaint, symptom suggestions, history lookup, and data-completeness review.
+- AI result screen with acuity, ESI label, confidence, top factors, clinical rules, and safety-gate status.
+- Staff accept, override, and reassess actions.
+- Priority queue grouped into ESI 1-2, ESI 3, and ESI 4-5 columns.
+- Reassessment queue with due and overdue timers.
+- Audit log, analytics, surge-mode, system-info, and settings screens.
+- WebSocket queue updates from the backend.
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+## Backend connection
 
-- Configure the top-level `parserOptions` property like this:
+The deployed frontend points at:
 
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+```env
+VITE_API_URL=https://vitalnode-backend.onrender.com
+VITE_WS_URL=wss://vitalnode-backend.onrender.com/api/v1/ws/queue
 ```
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+For another environment, set these variables before building.
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
+## Demo access
 
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
+| Role | Staff ID | Password |
+| --- | --- | --- |
+| Triage Nurse | `TN-0421` | `demo123` |
+| Clinician | `CL-0112` | `demo123` |
+| Administrator | `AD-0031` | `demo123` |
+
+## Development
+
+```bash
+npm install
+npm run dev
 ```
+
+## Production build
+
+```bash
+npm run build
+```
+
+The generated static assets are emitted to `dist/`.
