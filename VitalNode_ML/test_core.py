@@ -113,3 +113,133 @@ for idx, (name, data) in enumerate(patients, 1):
         time.sleep(4.1)
 
 print("\n" + "="*80 + "\n✅ SURGE SIMULATION COMPLETE.")
+
+"""
+terminal output shown in video : 
+
+venv) joy@joy:~/vital_node/VitalNode_ML$ python test_core.py
+🏥 VITALNODE SURGE SIMULATION: 15-PATIENT GEMINI PIPELINE 🏥
+
+Initiating 15-Patient Pipeline. Gemini API Rate Limit: 15 RPM (4.1s delay between calls)...
+================================================================================
+
+[1/15] 1. Cardiac Arrest (Immediate Danger)
+Direct use of automatic function calling (AFC) in Models.generate_content is not recommended. Instead, we recommend to use AFC in Chat.send_message. Similarly, direct use of AFC in Models.generate_content_stream is not recommended. Instead, we recommend to use AFC in Chat.send_message_stream.
+Extracted NLP:          Cardiac arrest (Risk: 0)
+ML Raw Prediction:      ESI 2
+Final Fused Acuity:     ESI 1 (Confidence: 89.5%)
+Safety Gate Action:     Verify Path: Clinical Protocol Override
+Safety Flags Triggered: ["Level 1 Immediate Danger Observed"]
+AI Reasoning:           The patient is in active cardiac arrest with a heart rate of zero and no pulse, requiring immediate resuscitative intervention, while there is no medical history available to evaluate compounding risks.
+
+[2/15] 2. Critical Respiratory Failure
+Extracted NLP:          Severe respiratory distress (Risk: 0)
+ML Raw Prediction:      ESI 2
+Final Fused Acuity:     ESI 1 (Confidence: 99.1%)
+Safety Gate Action:     Verify Path: Clinical Protocol Override
+Safety Flags Triggered: ["Severe Hypoxia (SpO2 < 90%)"]
+AI Reasoning:           The patient presents with critical respiratory failure characterized by severe hypoxia, cyanosis, and tachycardia, which is highly compounded by their history of severe COPD.
+
+[3/15] 3. Extreme Tachycardia (Arrhythmia)
+Extracted NLP:          Symptomatic tachycardia (Risk: 1)
+ML Raw Prediction:      ESI 2
+Final Fused Acuity:     ESI 1 (Confidence: 99.3%)
+Safety Gate Action:     Verify Path: Clinical Protocol Override
+Safety Flags Triggered: ["Critical Arrhythmia Risk (Extreme HR)"]
+AI Reasoning:           The patient's extreme tachycardia of 195 bpm accompanied by dizziness indicates potential hemodynamic compromise, which is severely compounded by their documented history of SVT.
+
+[4/15] 4. Neonatal Sepsis Trap (< 3 months)
+Extracted NLP:          Febrile lethargy (Risk: 1)
+ML Raw Prediction:      ESI 4
+Final Fused Acuity:     ESI 2 (Confidence: 72.7%)
+Safety Gate Action:     Verify Path: Clinical Protocol Override
+Safety Flags Triggered: ["Neonate Fever Risk (Age <= 3mo, Temp >= 38\u00b0C)"]
+AI Reasoning:           The combination of lethargy, fever, and marked tachycardia (HR 145) indicates a high-risk clinical state suggestive of systemic infection or sepsis, while the lack of available medical history provides no compounding risk factors.
+
+[5/15] 5. Hypertensive Emergency (Stroke Risk)
+Extracted NLP:          Acute severe headache (Risk: 1)
+ML Raw Prediction:      ESI 2
+Final Fused Acuity:     ESI 2 (Confidence: 99.4%)
+Safety Gate Action:     Accept Path
+Safety Flags Triggered: ["Hypertensive Emergency (BP >= 180/120)"]
+AI Reasoning:           A sudden-onset 'worst headache of life' accompanied by blurred vision in a patient with a history of hypertension is highly suspicious for a life-threatening neurological emergency such as a subarachnoid hemorrhage or hypertensive crisis.
+
+[6/15] 6. Pediatric High Fever Risk
+Extracted NLP:          Otalgia and fever (Risk: 2)
+ML Raw Prediction:      ESI 4
+Final Fused Acuity:     ESI 2 (Confidence: 82.3%)
+Safety Gate Action:     Verify Path: Clinical Protocol Override
+Safety Flags Triggered: ["Pediatric High Fever Risk (Temp >= 39\u00b0C)"]
+AI Reasoning:           The patient presents with signs of acute otalgia and a high fever of 39.5°C, requiring urgent evaluation for potential otitis media while remaining hemodynamically stable with no known comorbidities.
+
+[7/15] 7. Hypotension / Shock Risk
+Extracted NLP:          Syncope and tachycardia (Risk: 1)
+ML Raw Prediction:      ESI 2
+Final Fused Acuity:     ESI 2 (Confidence: 47.7%)
+Safety Gate Action:     Accept Path
+Safety Flags Triggered: ["Hypotension / Shock Risk (Sys BP < 90)"]
+AI Reasoning:           The patient's syncope combined with significant tachycardia (HR 125) represents a high-risk cardiovascular or systemic issue requiring emergent evaluation, with no known historical comorbidities to compound the risk.
+
+[8/15] 8. Extreme Hyperthermia
+Extracted NLP:          Altered mental status (Risk: 0)
+ML Raw Prediction:      ESI 2
+Final Fused Acuity:     ESI 2 (Confidence: 49.7%)
+Safety Gate Action:     Accept Path
+Safety Flags Triggered: ["Extreme Hyperthermia (Temp >= 40\u00b0C)"]
+AI Reasoning:           The patient exhibits severe hyperthermia (Temp 40.2°C), tachycardia, and confusion, indicating a life-threatening heat stroke that requires immediate resuscitative cooling.
+
+[9/15] 9. Abdominal Pain with History
+Extracted NLP:          RLQ abdominal pain (Risk: 2)
+ML Raw Prediction:      ESI 2
+Final Fused Acuity:     ESI 2 (Confidence: 57.2%)
+Safety Gate Action:     Accept Path
+AI Reasoning:           The patient presents with acute right lower quadrant pain and a low-grade fever, requiring urgent evaluation (ESI 3 equivalent) despite a history of appendectomy ruling out typical appendicitis.
+
+[10/15] 10. Orthopedic Trauma
+Extracted NLP:          Deformed upper extremity (Risk: 2)
+ML Raw Prediction:      ESI 4
+Final Fused Acuity:     ESI 4 (Confidence: 38.7%)
+Safety Gate Action:     Accept Path
+AI Reasoning:           The patient presents with a suspected extremity fracture requiring multiple emergency department resources including imaging, orthopedic consultation, and pain management, with mild tachycardia likely secondary to pain and no compounding historical risk factors.
+
+[11/15] 11. Standard Adult Fever
+Extracted NLP:          Fever and myalgia (Risk: 3)
+ML Raw Prediction:      ESI 4
+Final Fused Acuity:     ESI 4 (Confidence: 50.7%)
+Safety Gate Action:     Accept Path
+AI Reasoning:           The patient presents with stable vital signs and a mild fever typical of a viral syndrome, with no reported medical history to complicate their condition.
+
+[12/15] 12. Mild Allergic Reaction
+Extracted NLP:          Localized allergic rash (Risk: 4)
+ML Raw Prediction:      ESI 4
+Final Fused Acuity:     ESI 4 (Confidence: 43.0%)
+Safety Gate Action:     Accept Path
+AI Reasoning:           The patient presents with a localized postprandial rash but has completely stable vital signs and no airway compromise, indicating a low-acuity, non-urgent allergic reaction.
+
+[13/15] 13. Standard Pediatric Cold
+Extracted NLP:          Cough and rhinorrhea (Risk: 4)
+ML Raw Prediction:      ESI 4
+Final Fused Acuity:     ESI 4 (Confidence: 60.1%)
+Safety Gate Action:     Accept Path
+AI Reasoning:           The patient exhibits mild upper respiratory symptoms with entirely stable vital signs and has no documented comorbidities, indicating a non-urgent status.
+
+[14/15] 14. Minor Laceration
+Extracted NLP:          Finger laceration (Risk: 4)
+ML Raw Prediction:      ESI 2
+Final Fused Acuity:     ESI 2 (Confidence: 74.4%)
+Safety Gate Action:     Accept Path
+AI Reasoning:           The patient presents with a minor finger laceration with controlled bleeding and completely stable vital signs, indicating a non-urgent condition with no known compounding history.
+
+[15/15] 15. High Risk with Missing Data
+NLP Fallback Triggered: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}
+Extracted NLP:          Unknown (Risk: 2)
+ML Raw Prediction:      ESI 1
+Final Fused Acuity:     ESI 1 (Confidence: 49.5%)
+Safety Gate Action:     Verify Path: Incomplete Data & Uncertainty
+AI Reasoning:           Standard protocol applied due to NLP timeout.
+
+================================================================================
+✅ SURGE SIMULATION COMPLETE.
+
+
+ """
